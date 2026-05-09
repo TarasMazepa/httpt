@@ -4,17 +4,19 @@ const http = require('node:http');
 const { executeWithCurl } = require('../src/commands/emit.js');
 
 test('executeWithCurl sends correct HTTP request over the wire', async () => {
+  let capturedRequest = null;
   const server = http.createServer((req, res) => {
     let body = '';
     req.on('data', chunk => body += chunk);
     req.on('end', () => {
-      res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({
+      capturedRequest = {
         method: req.method,
         url: req.url,
         headers: req.headers,
         body: body
-      }));
+      };
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(capturedRequest));
     });
   });
 
@@ -33,16 +35,12 @@ test('executeWithCurl sends correct HTTP request over the wire', async () => {
   };
 
   try {
-    // Execute curl against the local server
-    // Note: we pass null for bodyStream since we are just testing the headers/routing
     await executeWithCurl(mockIR, null, 'http');
 
-    // Curl writes directly to stdout in the spawn process, but it also hit our server.
-    // To assert, we would ideally capture the server's processed request.
-    // For this test, if the promise resolves without throwing, the spawn was successful
-    // and curl exited with code 0.
-    assert.ok(true, 'Curl executed successfully and returned exit code 0');
-
+    assert.ok(capturedRequest, 'Server did not receive a request');
+    assert.strictEqual(capturedRequest.method, 'PUT');
+    assert.strictEqual(capturedRequest.url, '/api/update');
+    assert.strictEqual(capturedRequest.headers['x-tool'], 'httpt');
   } finally {
     server.close();
   }
